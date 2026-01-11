@@ -54,7 +54,7 @@ jobs:
           echo "ANDROID_NDK_HOME=$HOME/android-sdk/ndk/${NDK_VERSION}" >> $GITHUB_ENV
           echo "PATH=$HOME/android-sdk/cmdline-tools/cmdline-tools/bin:$HOME/android-sdk/platform-tools:$PATH" >> $GITHUB_ENV
 
-      - name: Debug: show geode-sdk contents
+      - name: Debug:show geode-sdk contents
         run: |
           echo "Geode SDK path: ${{ github.workspace }}/geode-sdk"
           ls -la "${{ github.workspace }}/geode-sdk" || true
@@ -76,4 +76,4 @@ jobs:
         with:
           name: AutoSave-${{ matrix.abi }}.geode
           path: build/*.geode
-          
+
