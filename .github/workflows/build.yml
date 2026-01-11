@@ -27,18 +27,105 @@ jobs:
           submodules: false
           fetch-depth: 1
 
-      - name: Download Geode SDK archive (ZIP)
+      - name: Install prerequisites
+        run: sudo apt-get update && sudo apt-get install -y unzip wget zip git cmake ninja-build curl
+
+      - name: Download Geode SDK archive (try main then master) with validation and retries
         run: |
-          set -e
-          SDK_ZIP_URL="https://github.com/geode-sdk/geode-sdk/archive/refs/heads/master.zip"
-          echo "Downloading Geode SDK from $SDK_ZIP_URL"
-          curl -sL -o geode-sdk.zip "$SDK_ZIP_URL"
-          unzip -q geode-sdk.zip -d geode-sdk-tmp
-          mkdir -p geode-sdk
-          # move extracted contents into geode-sdk folder
-          mv geode-sdk-tmp/geode-sdk-master/* geode-sdk/
-          rm -rf geode-sdk.zip geode-sdk-tmp
-          echo "Geode SDK downloaded to $GITHUB_WORKSPACE/geode-sdk"
+          set -euo pipefail
+
+          SDK_DIR="${GITHUB_WORKSPACE}/geode-sdk"
+          mkdir -p "$SDK_DIR"
+
+          try_download() {
+            local url="$1"
+            local out="$2"
+            echo "Downloading $url"
+            # follow redirects, show HTTP code
+            http_code=$(curl -sSL -w "%{http_code}" -o "$out" "$url")
+            echo "HTTP code: $http_code"
+            if [ "$http_code" != "200" ]; then
+              return 1
+            fi
+            # quick sanity: file size > 1KB
+            size=$(stat -c%s "$out" || echo 0)
+            if [ "$size" -lt 1024 ]; then
+              echo "Downloaded file too small ($size bytes)"
+              return 2
+            fi
+            return 0
+          }
+
+          ZIP_PATH="$GITHUB_WORKSPACE/geode-sdk.zip"
+          rm -f "$ZIP_PATH"
+
+          # Try common default branches
+          BRANCHES=("main" "master")
+          success=0
+          for br in "${BRANCHES[@]}"; do
+            url="https://github.com/geode-sdk/geode-sdk/archive/refs/heads/${br}.zip"
+            if try_download "$url" "$ZIP_PATH"; then
+              echo "Downloaded geode-sdk archive from branch: $br"
+              success=1
+              break
+            else
+              echo "Failed to download branch: $br"
+            fi
+          done
+
+          # If archive download failed, try GitHub archive by tag 'latest' (if exists)
+          if [ "$success" -eq 0 ]; then
+            url="https://github.com/geode-sdk/geode-sdk/archive/refs/tags/latest.zip"
+            if try_download "$url" "$ZIP_PATH"; then
+              echo "Downloaded geode-sdk archive from tag: latest"
+              success=1
+            fi
+          fi
+
+          # If still failed, fallback to git clone (non-interactive)
+          if [ "$success" -eq 0 ]; then
+            echo "Archive download failed; attempting git clone fallback (public repo expected)."
+            export GIT_TERMINAL_PROMPT=0
+            rm -rf "$SDK_DIR"
+            if git clone --depth 1 https://github.com/geode-sdk/geode-sdk.git "$SDK_DIR"; then
+              echo "git clone succeeded"
+              success=1
+            else
+              echo "git clone failed"
+              exit 1
+            fi
+          fi
+
+          # If we have a zip, extract it
+          if [ -f "$ZIP_PATH" ]; then
+            echo "Unzipping $ZIP_PATH to temporary folder"
+            tmpdir="$(mktemp -d)"
+            if unzip -q "$ZIP_PATH" -d "$tmpdir"; then
+              # move contents (repo-root/*) into geode-sdk folder
+              # find the single top-level directory
+              topdir=$(find "$tmpdir" -maxdepth 1 -mindepth 1 -type d | head -n 1)
+              if [ -z "$topdir" ]; then
+                echo "No top-level directory found in zip"
+                exit 1
+              fi
+              rm -rf "$SDK_DIR"
+              mkdir -p "$SDK_DIR"
+              mv "$topdir"/* "$SDK_DIR"/
+              rm -rf "$tmpdir" "$ZIP_PATH"
+              echo "Geode SDK extracted to $SDK_DIR"
+            else
+              echo "unzip failed; attempting git clone fallback"
+              rm -rf "$tmpdir" || true
+              rm -f "$ZIP_PATH" || true
+              export GIT_TERMINAL_PROMPT=0
+              if git clone --depth 1 https://github.com/geode-sdk/geode-sdk.git "$SDK_DIR"; then
+                echo "git clone succeeded after unzip failure"
+              else
+                echo "git clone also failed; aborting"
+                exit 1
+              fi
+            fi
+          fi
 
       - name: Set up JDK 11
         uses: actions/setup-java@v4
@@ -46,12 +133,9 @@ jobs:
           distribution: temurin
           java-version: '11'
 
-      - name: Install prerequisites
-        run: sudo apt-get update && sudo apt-get install -y unzip wget zip git cmake ninja-build curl
-
       - name: Install Android command line tools and NDK
         run: |
-          set -e
+          set -euo pipefail
           mkdir -p $HOME/android-sdk/cmdline-tools
           cd $HOME/android-sdk/cmdline-tools
           wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O cmdline.zip
@@ -70,7 +154,7 @@ jobs:
 
       - name: Configure CMake (point to downloaded Geode SDK)
         run: |
-          set -e
+          set -euo pipefail
           cmake -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DANDROID_ABI=${{ matrix.abi }} \
@@ -86,4 +170,4 @@ jobs:
         with:
           name: AutoSave-${{ matrix.abi }}.geode
           path: build/*.geode
-          
+
