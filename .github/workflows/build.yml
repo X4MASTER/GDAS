@@ -22,6 +22,15 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: false
+          fetch-depth: 1
+
+      - name: Checkout Geode SDK
+        uses: actions/checkout@v4
+        with:
+          repository: geode-sdk/geode-sdk
+          path: geode-sdk
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 1
 
       - name: Set up JDK 11
         uses: actions/setup-java@v4
@@ -32,10 +41,6 @@ jobs:
       - name: Install prerequisites
         run: sudo apt-get update && sudo apt-get install -y unzip wget zip git cmake ninja-build
 
-      - name: Clone Geode SDK
-        run: |
-          git clone --depth 1 https://github.com/geode-sdk/geode-sdk.git geode-sdk
-
       - name: Install Android command line tools and NDK
         run: |
           mkdir -p $HOME/android-sdk/cmdline-tools
@@ -43,10 +48,16 @@ jobs:
           wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O cmdline.zip
           unzip -q cmdline.zip
           rm cmdline.zip
-          yes | $HOME/android-sdk/cmdline-tools/cmdline-tools/bin/sdkmanager --sdk_root=$HOME/android-sdk "platform-tools" "platforms;android-${ANDROID_API_LEVEL}" "cmake;3.22.1" "ndk;${NDK_VERSION}"
+          yes | $HOME/android-sdk/cmdline-tools/cmdline-tools/bin/sdkmanager --sdk_root=$HOME/android-sdk \
+            "platform-tools" "platforms;android-${ANDROID_API_LEVEL}" "cmake;3.22.1" "ndk;${NDK_VERSION}"
           echo "ANDROID_SDK_ROOT=$HOME/android-sdk" >> $GITHUB_ENV
           echo "ANDROID_NDK_HOME=$HOME/android-sdk/ndk/${NDK_VERSION}" >> $GITHUB_ENV
           echo "PATH=$HOME/android-sdk/cmdline-tools/cmdline-tools/bin:$HOME/android-sdk/platform-tools:$PATH" >> $GITHUB_ENV
+
+      - name: Debug: show geode-sdk contents
+        run: |
+          echo "Geode SDK path: ${{ github.workspace }}/geode-sdk"
+          ls -la "${{ github.workspace }}/geode-sdk" || true
 
       - name: Configure CMake (point to cloned Geode SDK)
         run: |
