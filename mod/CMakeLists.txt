@@ -12,7 +12,7 @@ include("${GEODE_SDK_ROOT}/cmake/Geode.cmake")
 
 geode_add_mod(AutoSave
     SOURCES
-        main.cpp
+        ${CMAKE_SOURCE_DIR}/main.cpp
         src/AutoSave.cpp
         src/SettingsLayer.cpp
     HEADERS
