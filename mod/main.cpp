@@ -9,7 +9,7 @@ public:
     std::string getVersion() override { return "1.0.0"; }
     void onLoad() override {
         AutoSaveManager::instance().init();
-        // register settings layer if available in your menu system
+        Mod::addSettingsLayer("Auto Save", [](){ return AutoSaveSettingsLayer::create(); });
     }
     void onUnload() override {
         AutoSaveManager::instance().shutdown();
